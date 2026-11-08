@@ -79,8 +79,8 @@ class Sanitizer:
         if not text:
             return ""
 
-        # Remove zero-width characters and emojis (Rule 7)
-        text = re.sub(r"[\u200b\u200c\u200d\u200e\u200f\ufeff]", "", text)
+        # Remove zero-width characters, bidirectional overrides, and emojis (Rule 7)
+        text = re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]", "", text)
         text = self.EMOJI_PATTERN.sub("", text)
 
         # Redact SSH private keys
@@ -99,8 +99,9 @@ class Sanitizer:
             return full.replace(val, "[REDACTED_SECRET]")
         text = self.SECRET_KEY_PATTERN.sub(_replace_secret, text)
 
-        # Redact CLI flags like -p password or --password=secret
+        # Redact CLI flags like -p password, --password=secret, or -u user:password
         text = re.sub(r"(-p|--password|--secret|--token)\s+([^\s]+)", r"\1 [REDACTED_SECRET]", text, flags=re.IGNORECASE)
+        text = re.sub(r"(-u|--user)\s+([^\s:]+):([^\s]+)", r"\1 \2:[REDACTED_SECRET]", text, flags=re.IGNORECASE)
 
         # Redact Emails
         def _replace_email(match: re.Match) -> str:
@@ -258,6 +259,8 @@ class TelemetryParser:
             base_bin = cmd.split()[0].lower() if cmd.split() else ""
             is_noise = base_bin in self.NOISE_COMMANDS and len(cmd.split()) <= 2
             is_check = any(cmd.lower().startswith(p) for p in self.CHECK_PREFIXES)
+            if any(mutating in cmd.lower() for mutating in ["systemctl restart", "systemctl stop", "kill", "rm ", "cp ", "mv "]):
+                is_check = False
 
             extracted.append({
                 "command": cmd,
@@ -299,7 +302,9 @@ class TelemetryParser:
 
             base_bin = cmd.split()[0].lower() if cmd.split() else ""
             is_noise = base_bin in self.NOISE_COMMANDS and len(cmd.split()) <= 2
-            is_check = any(cmd.lower().startswith(p) for p in self.CHECK_PREFIXES) or base_bin.startswith("get-") or base_bin.startswith("test-")
+            is_check = (any(cmd.lower().startswith(p) for p in self.CHECK_PREFIXES) or base_bin.startswith("get-") or base_bin.startswith("test-"))
+            if any(mutating in cmd.lower() for mutating in ["stop-", "restart-", "set-", "remove-", "new-", "kill", "rm"]):
+                is_check = False
 
             extracted.append({
                 "command": cmd,
