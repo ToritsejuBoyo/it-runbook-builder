@@ -1,0 +1,25 @@
+**********************
+Windows PowerShell transcript start
+Start time: 20261108041520
+Username: SYNTHETIC\admin-service
+RunAs User: SYNTHETIC\admin-service
+Configuration Name: 
+Machine: WIN-PROD-APP01 (Microsoft Windows Server 2022 Datacenter)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+Process ID: 8192
+PSVersion: 5.1.20348.1
+**********************
+Transcript started, output file is C:\Logs\PowerShell_transcript.txt
+PS C:\Windows\system32> Test-Connection -ComputerName app-backend01.corp.local -Count 2
+PS C:\Windows\system32> Get-Service -Name W3SVC | Select-Object Status, Name, DisplayName
+PS C:\Windows\system32> Get-IISAppPool -Name "PaymentProcessingPool"
+PS C:\Windows\system32> Restart-WebAppPool -Name "PaymentProcessingPool"
+PS C:\Windows\system32> Stop-Service -Name W3SVC
+PS C:\Windows\system32> Remove-Item -Path "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\Temporary ASP.NET Files\root\*" -Recurse -Force
+PS C:\Windows\system32> Start-Service -Name W3SVC
+PS C:\Windows\system32> Get-Service -Name W3SVC
+PS C:\Windows\system32> Invoke-WebRequest -Uri "http://10.200.12.50:8080/health" -UseBasicParsing
+**********************
+Windows PowerShell transcript end
+End time: 20261108041830
+**********************

@@ -1,0 +1,18 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local test outputs and artifacts
+*.tmp
+*.temp
+runbook-*.md
+runbook-*.html
+runbook-*.json
+case-study.md
+iis-runbook-confluence.txt
+output/
+
+# OS generated files
+.DS_Store
+Thumbs.db

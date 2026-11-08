@@ -1,0 +1,12 @@
+[02:14:10] <sre_alex> Disk alert triggered on prod-elastic-04. Volume /data is at 98% full.
+[02:15:05] <oncall_dev> Looking at it now. Logging in via bastion.
+[02:15:40] <oncall_dev> Checked volume: `df -h /data`
+[02:16:12] <oncall_dev> Found massive unrotated logs in `/var/log/elasticsearch/`.
+[02:17:00] <sre_alex> Did logrotate fail? Check `systemctl status logrotate`
+[02:17:45] <oncall_dev> Yes, logrotate was masked. Let me unmask it: `systemctl unmask logrotate`
+[02:18:20] <oncall_dev> Force rotating logs now: `logrotate -f /etc/logrotate.d/elasticsearch`
+[02:19:10] <oncall_dev> Cleaning stale gzipped files older than 30 days: `find /var/log/elasticsearch/ -name "*.log.gz" -mtime +30 -delete`
+[02:20:00] <oncall_dev> Restarting the elasticsearch cluster node: `systemctl restart elasticsearch`
+[02:20:45] <sre_alex> Verify cluster health: `curl -s http://10.240.1.80:9200/_cluster/health`
+[02:21:15] <oncall_dev> Cluster status is green. Available disk space on /data is now 42% (reclaimed 320 GB).
+[02:22:00] <sre_alex> Alert cleared in Datadog. Document this as an SOP so L1 can run it next time.

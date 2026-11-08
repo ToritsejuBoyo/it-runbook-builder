@@ -1,0 +1,15 @@
+# Bash History: Production Nginx SSL Certificate Renewal
+cd /etc/ssl/certs
+ls -la
+whoami
+openssl x509 -in /etc/ssl/certs/api-gateway.crt -noout -dates
+cp /etc/ssl/certs/api-gateway.crt /etc/ssl/certs/api-gateway.crt.bak
+cp /etc/ssl/private/api-gateway.key /etc/ssl/private/api-gateway.key.bak
+certbot certonly --standalone -d api.corp.internal --non-interactive --agree-tos -m admin-devops@corp.internal --post-hook "systemctl reload nginx"
+chmod 600 /etc/ssl/private/api-gateway.key
+chown root:root /etc/ssl/certs/api-gateway.crt
+nginx -t
+systemctl reload nginx
+systemctl status nginx
+curl -I https://api.corp.internal/healthz
+openssl s_client -connect 10.100.4.15:443 -servername api.corp.internal < /dev/null | openssl x509 -noout -dates

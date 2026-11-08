@@ -1,0 +1,19 @@
+{
+  "issue_key": "INFRA-4892",
+  "summary": "Production DNS Cutover for Payment Gateway Endpoint",
+  "status": "Closed",
+  "reporter": "lead-architect@synthetic-corp.com",
+  "assignee": "sre-engineer@synthetic-corp.com",
+  "work_notes": [
+    "Initiating scheduled change CHG0098231 at 03:00 UTC.",
+    "Pre-flight check: Verify existing DNS propagation using dig +short gateway.corp.internal @10.0.0.2",
+    "Lowered TTL from 3600 to 60 seconds on Route53 zone Z102938482.",
+    "Executed API token update: curl -H 'Authorization: Bearer mock-secret-token-xyz-12345' https://api.corp.internal/v1/config",
+    "Updated DNS A record pointing gateway.corp.internal to 10.50.20.100.",
+    "Verification command: dig gateway.corp.internal +short",
+    "Health check probe: curl -i -s https://gateway.corp.internal/ping",
+    "Observed successful response 200 OK with latency 14ms.",
+    "Change completed successfully. Raised TTL back to 3600."
+  ],
+  "resolution": "DNS A record updated to point to new active load balancer. Verified traffic routing."
+}
