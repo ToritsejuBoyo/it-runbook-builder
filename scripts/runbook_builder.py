@@ -267,6 +267,13 @@ class TelemetryParser:
             })
         return extracted
 
+    TRANSCRIPT_METADATA_PREFIXES = (
+        "start time:", "username:", "runas user:", "configuration name:",
+        "machine:", "host application:", "process id:", "psversion:",
+        "pscompatversion:", "serializationversion:", "transcript started",
+        "end time:", "transcript ended"
+    )
+
     def _parse_powershell(self, text: str) -> List[Dict[str, Any]]:
         lines = text.splitlines()
         extracted: List[Dict[str, Any]] = []
@@ -274,6 +281,10 @@ class TelemetryParser:
         for line in lines:
             line = line.strip()
             if not line or line.startswith("**********************") or line.startswith("Windows PowerShell"):
+                continue
+
+            lower_line = line.lower()
+            if any(lower_line.startswith(p) for p in self.TRANSCRIPT_METADATA_PREFIXES):
                 continue
 
             # Handle PS prompt e.g. "PS C:\Users\Admin> Restart-Service W3SVC"
