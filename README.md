@@ -2,10 +2,14 @@
 
 ![IT Runbook Builder Terminal Demo](assets/demo.gif)
 
-[![Automated Test Suite](https://img.shields.io/badge/tests-21%20passed-brightgreen.svg)](tests/validate-skill.py)
+[![tests](https://github.com/ToritsejuBoyo/it-runbook-builder/actions/workflows/tests.yml/badge.svg)](https://github.com/ToritsejuBoyo/it-runbook-builder/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)]()
+[![Dependencies](https://img.shields.io/badge/dependencies-zero%20(stdlib%20only)-brightgreen.svg)](CONTRIBUTING.md)
+[![Security](https://img.shields.io/badge/security-read--only%20%7C%20no%20egress-informational.svg)](SECURITY.md)
+[![Standard](https://img.shields.io/badge/standard-agentskills.io-blueviolet.svg)](https://agentskills.io)
+
 [![Python Version](https://img.shields.io/badge/python-3.8%2B%20(stdlib%20only)-blue.svg)](scripts/runbook_builder.py)
-[![Compliance](https://img.shields.io/badge/compliance-read--only%20%7C%20zero--pii-success.svg)](references/itil-runbook-standards.md)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 An enterprise documentation synthesis engine and agent skill that converts raw terminal command histories (Bash, Zsh, PowerShell), ITSM ticket work notes (ServiceNow, Jira), and incident bridge chat logs into standardized, audit-ready IT Runbooks and Standard Operating Procedures (SOPs). Features automated pre-flight assertions, parameter dictionary extraction, verification commands, and mandatory reverse-order rollback plans.
 
@@ -135,10 +139,20 @@ python tests/stress_test_runbook_builder.py
 python tests/extreme_test_runbook_builder.py
 ```
 
-### Benchmark Results
-- **Standard Harness:** 9/9 passed in 0.06s.
-- **Scale Stress Test:** 5,000 commands ingested and synthesized into full SOP in 0.12s (40,204 cmds/sec throughput).
-- **Extreme Payloads:** 8/8 passed (ReDoS resilience, zero-width Unicode injection, malformed ticket JSON, empty inputs).
+### Test Coverage
+
+Pass/fail status for every suite is published by CI on each push, across Python
+3.9-3.13 on Linux, macOS, and Windows - see the `tests` badge at the top of this file
+for the current result rather than a number recorded here by hand.
+
+What the suites cover:
+- **Standard harness:** end-to-end synthesis against the bundled fixtures.
+- **Scale stress:** 5,000-command histories synthesized into a full SOP, with a
+  throughput assertion to catch performance regressions.
+- **Extreme payloads:** ReDoS resilience, zero-width Unicode injection, malformed
+  ticket JSON, and empty inputs.
+- **Sanitization conformance:** the library-wide credential and PII redaction contract
+  (`tests/sanitizer_conformance_test.py`), identical in every skill.
 
 ---
 

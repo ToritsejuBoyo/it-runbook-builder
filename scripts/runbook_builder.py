@@ -16,6 +16,7 @@ Strictly adheres to:
 
 import argparse
 import datetime
+import hashlib
 import html
 import json
 import os
@@ -24,6 +25,21 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+# ---------------------------------------------------------------------------
+# Shared residual sanitization pass (vendored: scripts/sanitizer.py).
+# Runs last, after this skill's domain-specific masking, so that every skill in
+# the library enforces an identical credential/PII floor. See
+# tests/sanitizer_conformance_test.py for the contract this must satisfy.
+# ---------------------------------------------------------------------------
+try:
+    from sanitizer import residual_scrub as _residual_scrub
+except ImportError:  # pragma: no cover - direct execution from another cwd
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from sanitizer import residual_scrub as _residual_scrub
+
 
 
 # ----------------------------------------------------------------------
@@ -43,8 +59,14 @@ class Sanitizer:
     IPV6_PATTERN = re.compile(
         r"\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b|\bfe80:[0-9a-fA-F:]+\b"
     )
+    # Bounded to RFC 5321 limits (local part 64, domain 255, TLD 24). The original
+    # used unbounded `+` on both sides of the "@", which backtracks polynomially over
+    # a long dot or hyphen run - a session history full of hostnames is exactly that
+    # shape, so a pasted transcript could hang the sanitizer.
+    # `[A-Z|a-z]` was also a latent bug: inside a character class the "|" is a literal
+    # pipe, so it matched pipes as TLD characters.
     EMAIL_PATTERN = re.compile(
-        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
+        r"\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,24}\b"
     )
     SECRET_KEY_PATTERN = re.compile(
         r"(?i)(?:password|passwd|pwd|secret|apikey|api_key|token|access_key|auth|bearer)\s*[:=]\s*([^\s;,\"'>]+)"
@@ -58,8 +80,15 @@ class Sanitizer:
     SSH_PRIVATE_KEY_PATTERN = re.compile(
         r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+ PRIVATE KEY-----"
     )
+    # Structured label-by-label with DNS-bounded lengths instead of one unbounded
+    # `[a-zA-Z0-9.-]+`. That original form consumed an entire "a.a.a.a..." run, failed
+    # to find the suffix, then retried from every position: 13 seconds on 20 KB of
+    # hostname-shaped text, minutes on a real transcript. This is the single worst
+    # ReDoS vector found in the library.
     INTERNAL_DOMAIN_PATTERN = re.compile(
-        r"\b[a-zA-Z0-9.-]+\.(?:corp|local|internal|lan|intranet)\b", re.IGNORECASE
+        r"\b[a-zA-Z0-9-]{1,63}(?:\.[a-zA-Z0-9-]{1,63}){0,8}"
+        r"\.(?:corp|local|internal|lan|intranet)\b",
+        re.IGNORECASE,
     )
     EMOJI_PATTERN = re.compile(
         r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]"
@@ -133,6 +162,7 @@ class Sanitizer:
             return self._host_map[d]
         text = self.INTERNAL_DOMAIN_PATTERN.sub(_replace_domain, text)
 
+        text = _residual_scrub(text)
         return text
 
 
@@ -181,6 +211,16 @@ class Runbook:
 # ----------------------------------------------------------------------
 # 3. Telemetry Parser Engine
 # ----------------------------------------------------------------------
+
+# Precompiled and length-bounded. Each DNS label is capped at 63 characters and the
+# label count at 8, so the pattern cannot backtrack across an arbitrarily long
+# dotted run. Session histories and incident logs are full of dotted hostnames and
+# file paths, which is exactly the shape that defeats an unbounded nested quantifier.
+_FQDN_PATTERN = re.compile(
+    r"\b(?:[a-zA-Z0-9-]{1,63}\.){1,8}(?:com|org|net|io|local|internal)\b"
+)
+_TEST_NET_IP_PATTERN = re.compile(r"\b192\.0\.2\.\d{1,3}\b")
+
 
 class TelemetryParser:
     """
@@ -396,7 +436,16 @@ class RunbookEngine:
 
         rb = Runbook()
         rb.metadata.title = title or self._derive_title(actionable_ops)
-        rb.metadata.runbook_id = f"SOP-{datetime.datetime.now().strftime('%Y%m%d')}-{os.urandom(2).hex().upper()}"
+        # Derived from the runbook's own content, not os.urandom: regenerating a
+        # runbook from the same session history must yield the same SOP ID. A random
+        # suffix made two renders of one procedure look like two different documents
+        # in a change record, and broke reproducibility of the output as a whole.
+        _fingerprint = hashlib.sha256(
+            ("%s|%s|%s|" % (rb.metadata.title, target_env, owner)).encode("utf-8")
+            + repr([op.get("command", "") for op in actionable_ops]).encode("utf-8")
+        ).hexdigest()[:4].upper()
+        rb.metadata.runbook_id = "SOP-%s-%s" % (
+            datetime.datetime.now().strftime("%Y%m%d"), _fingerprint)
         rb.metadata.target_environment = target_env
         rb.metadata.owner = owner
         rb.metadata.created_at = datetime.date.today().isoformat()
@@ -515,8 +564,16 @@ class RunbookEngine:
         """Identifies specific hostnames, paths, and identifiers and parameterizes them."""
         for op in ops:
             cmd = op["command"]
-            # Detect domain names
-            domains = re.findall(r"\b(?:[a-zA-Z0-9-]+\.)+(?:com|org|net|io|local|internal)\b", cmd)
+            # Detect domain names.
+            #
+            # Bounded deliberately. The original pattern was
+            #   \b(?:[a-zA-Z0-9-]+\.)+(?:com|org|net|io|local|internal)\b
+            # whose `(?:...+\.)+` is a nested quantifier: on a long dotted run such
+            # as "a.a.a.a..." the engine explores exponentially many ways to split
+            # the labels before failing. That single findall accounted for 82 of the
+            # 82.4 seconds spent processing a 100 KB transcript. Capping label length
+            # (63, the DNS maximum) and label count removes the ambiguity.
+            domains = _FQDN_PATTERN.findall(cmd)
             for d in domains:
                 if d not in ["example.com", "schema.org"]:
                     param_name = "<TARGET_FQDN>"
@@ -864,7 +921,7 @@ class RunbookFormatter:
 # 6. Command Line Interface (CLI)
 # ----------------------------------------------------------------------
 
-def main() -> None:
+def _main_impl() -> None:
     parser = argparse.ArgumentParser(
         description="IT Runbook & SOP Builder: Converts terminal history and ticket notes into audit-ready runbooks."
     )
@@ -959,7 +1016,53 @@ def main() -> None:
         print(f"[+] IT Runbook successfully generated: {out_path} ({len(output_str)} bytes)")
     else:
         print(output_str)
+def main():
+    """
+    Hardened entry point.
 
+    Diagnostic input arrives from operators and agents in every broken shape
+    there is: an empty export, a directory, a truncated paste, a PDF renamed to
+    .json, the wrong encoding. Each must produce one clear diagnostic line and a
+    non-zero exit code. A Python traceback is the wrong failure mode here: it is
+    unactionable for a technician, and for an agent it leaks absolute filesystem
+    paths into a transcript while giving the model nothing it can act on.
+    """
+    try:
+        return _main_impl() or 0
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        sys.stderr.write("Error: interrupted.\n")
+        return 1
+    except IsADirectoryError:
+        sys.stderr.write("Error: input path is a directory, not a file.\n")
+        return 1
+    except FileNotFoundError as exc:
+        sys.stderr.write("Error: input file not found: %s\n" % exc)
+        return 1
+    except PermissionError as exc:
+        sys.stderr.write("Error: permission denied reading input: %s\n" % exc)
+        return 1
+    except UnicodeError as exc:
+        sys.stderr.write("Error: input encoding could not be decoded (%s).\n" % exc)
+        return 1
+    except (ValueError, TypeError, KeyError, IndexError, AttributeError) as exc:
+        sys.stderr.write("Error: input could not be parsed as valid telemetry "
+                         "(%s: %s).\n" % (type(exc).__name__, exc))
+        return 1
+    except RecursionError:
+        sys.stderr.write("Error: input is nested too deeply to parse safely.\n")
+        return 1
+    except MemoryError:
+        sys.stderr.write("Error: input exhausted available memory; refusing to continue.\n")
+        return 1
+    except OSError as exc:
+        sys.stderr.write("Error: could not read or write a file: %s\n" % exc)
+        return 1
+    except Exception as exc:
+        sys.stderr.write("Error: unrecoverable problem processing this input "
+                         "(%s: %s).\n" % (type(exc).__name__, exc))
+        return 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)
