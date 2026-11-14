@@ -4,7 +4,7 @@
 
 [![tests](https://github.com/ToritsejuBoyo/it-runbook-builder/actions/workflows/tests.yml/badge.svg)](https://github.com/ToritsejuBoyo/it-runbook-builder/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)]()
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
 [![Dependencies](https://img.shields.io/badge/dependencies-zero%20(stdlib%20only)-brightgreen.svg)](CONTRIBUTING.md)
 [![Security](https://img.shields.io/badge/security-read--only%20%7C%20no%20egress-informational.svg)](SECURITY.md)
 [![Standard](https://img.shields.io/badge/standard-agentskills.io-blueviolet.svg)](https://agentskills.io)
@@ -142,7 +142,7 @@ python tests/extreme_test_runbook_builder.py
 ### Test Coverage
 
 Pass/fail status for every suite is published by CI on each push, across Python
-3.9-3.13 on Linux, macOS, and Windows - see the `tests` badge at the top of this file
+3.10-3.13 on Linux, macOS, and Windows - see the `tests` badge at the top of this file
 for the current result rather than a number recorded here by hand.
 
 What the suites cover:
